@@ -1,6 +1,7 @@
 import { Router } from "express";
 import initKnex from "../lib/knex-config";
 import moment from "moment";
+import _ from "lodash";
 
 const router = Router();
 const knex = initKnex("stok_barang");
@@ -14,6 +15,7 @@ router.get("/raw-material/latest", async function (req, res, next) {
       .select(
         "stok_barang.nama_barang",
         "stok_barang.gudang",
+        "stok_barang.satuan",
         "histori_stok_barang.barang AS kode_barang",
         "histori_stok_barang.masuk",
         "histori_stok_barang.keluar",
@@ -37,6 +39,64 @@ router.get("/raw-material/latest", async function (req, res, next) {
       .orWhere("tipe_barang.kode", code)
       .distinct("histori_stok_barang.id")
       .limit(parseInt(<string>limit));
+    return res.json(items);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/raw-material/items-type", async function (req, res, next) {
+  try {
+    const itemsType = await knex.from("tipe_barang");
+    const items = await Promise.all(
+      itemsType.map(async (t) => {
+        const itemsByType = await knex
+          .from("stok_barang")
+          .innerJoin(
+            "item_kedatangan",
+            "stok_barang.kode_barang",
+            "item_kedatangan.kode_barang"
+          )
+          .innerJoin("tipe_barang", "item_kedatangan.tipe", "tipe_barang.kode")
+          .where("tipe_barang.kode", t?.kode)
+          .distinct("stok_barang.kode_barang");
+        let total = itemsByType.length;
+        return { ...t, total };
+      })
+    );
+    return res.json(items);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/raw-material/part-items", async function (req, res, next) {
+  try {
+    // raw material code
+    const { id } = req.body;
+    if (!id) throw new Error("Body param 'id' is required");
+    const items = await knex
+      .select(
+        "bom_all_level_1.id",
+        "bom_all_level_1.jenis_barang",
+        "bom_all_level_1.kode_barang AS kode_material",
+        "bom_all_level_1.nama_barang AS material",
+        "bom_all_level_1.satuan",
+        "bom_all_level_1.induk AS kode_barang",
+        "tbl_barang.nama_barang",
+        knex.raw("IFNULL(bom_all_level_1.bruto, 0) AS bruto"),
+        knex.raw("IFNULL(1/bruto, 0) AS hasil_pcs")
+      )
+      .from("bom_all_level_1")
+      .innerJoin(
+        "tbl_barang",
+        "bom_all_level_1.induk",
+        "tbl_barang.kode_barang"
+      )
+      .distinct("bom_all_level_1.induk")
+      .where("bom_all_level_1.jenis_barang", "like", "%Raw Material%")
+      .where("bom_all_level_1.kode_barang", id)
+      .orderBy("bom_all_level_1.urutan", "desc");
     return res.json(items);
   } catch (error) {
     next(error);
@@ -108,10 +168,32 @@ router.post("/raw-material", async function (req, res, next) {
       .whereBetween("histori_stok_barang.aktual", [start, end])
       .where("histori_stok_barang.barang", code)
       .orWhere("tipe_barang.kode", code)
+      .distinct("histori_stok_barang.id")
       .limit(parseInt(limit))
       .orderBy("histori_stok_barang.aktual", "desc");
 
     return res.json(items);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/material-cust", async function (req, res, next) {
+  try {
+    const items = await knex
+      .from("tbl_barang")
+      .where("kategori", "like", "%material cust%");
+    const omittedItems = _.map(
+      items,
+      _.partial(_.omit, _, [
+        "cycletime",
+        "cycletime_welding",
+        "pjg_welding",
+        "mesin",
+        "cvt",
+      ])
+    );
+    return res.json(omittedItems);
   } catch (error) {
     next(error);
   }

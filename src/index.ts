@@ -15,7 +15,7 @@ app.use(cors());
 app.use(logger);
 app.use("/api/portal-laporan", portalLaporan);
 app.use("/api/laporan-produksi", laporanProduksi);
-app.use("/api/monitor-gudang/", monitorGudang);
+app.use("/api/monitor-gudang", monitorGudang);
 app.use(errorHandler);
 app.use("*", (req, res) => res.status(404).json({ error: "Unknown endpoint" }));
 const PORT = process.env.PORT || 3005;
