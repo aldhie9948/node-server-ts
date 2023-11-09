@@ -76,7 +76,7 @@ router.get("/", async function (req, res, next) {
   }
 });
 
-// for component react-select
+// for component svelte-select
 router.get("/:no_plan", async function (req, res, next) {
   try {
     const { no_plan } = req.params;
@@ -92,8 +92,8 @@ router.get("/:no_plan", async function (req, res, next) {
       })
       .distinct("hasil_produksi.no_rencana AS no_plan")
       .where("hasil_produksi.no_rencana", "like", `%${no_plan}%`)
-      .limit(20)
-      .orderBy("plan_produksi.plan_no", "desc");
+      .limit(100)
+      .orderBy("plan_produksi.plan_no", "asc");
     return res.json(
       items.map((i) => ({
         value: i.no_plan,
