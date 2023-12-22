@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "set \"NODE_ENV=production\" && nodemon ./src/index.ts",
-    "dev": "set \"NODE_ENV=development\" && nodemon ./src/index.ts"
+    "dev": "set \"NODE_ENV=development\" && nodemon ./src/index.ts",
+    "build": "tsc && yarn move:ecosystem && yarn move:bat",
+    "move:ecosystem": "xcopy .\\ecosystem.config.js .\\dist /Y",
+    "move:bat": "xcopy .\\start.bat .\\dist /Y"
   },
   "keywords": [],
   "author": "",
