@@ -106,5 +106,4 @@ router.get("/:no_plan", async function (req, res, next) {
   }
 });
 
-const laporanProduksi = router;
-export default laporanProduksi;
+export default router;
