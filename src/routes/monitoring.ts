@@ -215,7 +215,9 @@ router.get("/welding", async function (_req, res, next) {
       )
       .where("hasil_produksi.tgl_dokumen", currentDate)
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%02%")
-      .andWhereNot("hasil_produksi.bagian", "LIKE", "%T%");
+      .andWhereNot("hasil_produksi.bagian", "LIKE", "%T%")
+      .groupBy("barang")
+      .groupBy("operator");
     return res.json(result);
   } catch (error) {
     next(error);
