@@ -106,7 +106,8 @@ router.get("/press", async function (_req, res, next) {
         "LEFT JOIN `mms-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
       )
       .where("hasil_produksi.tgl_dokumen", currentDate)
-      .andWhere("hasil_produksi.bagian", "like", "%02%");
+      .andWhere("hasil_produksi.bagian", "like", "%02%")
+      .orderBy("hasil_produksi.kode_mesin", "desc");
     return res.json(result);
   } catch (error) {
     next(error);
