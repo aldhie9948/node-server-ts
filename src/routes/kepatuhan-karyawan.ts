@@ -41,11 +41,17 @@ router.get("/press/date/:tanggal", async function (req, res, next) {
       "kontrol_kepatuhan_operator.catatan",
       "kontrol_kepatuhan_operator.tgl",
       "kontrol_kepatuhan_operator.area",
+      "ppc_tonase.kode_mesin AS kode_mesin",
     ];
     const date = moment(tanggal).utc(true).format();
     const results = await db
       .select(...query)
       .from("kontrol_kepatuhan_operator")
+      .leftOuterJoin(
+        "ppc_tonase",
+        "ppc_tonase.id",
+        "kontrol_kepatuhan_operator.id_mesin"
+      )
       .where("kontrol_kepatuhan_operator.tgl", date)
       .orderBy("kontrol_kepatuhan_operator.karyawan", "asc");
 
@@ -91,10 +97,16 @@ router.get("/press/worker/:worker", async function (req, res, next) {
       "kontrol_kepatuhan_operator.catatan",
       "kontrol_kepatuhan_operator.tgl",
       "kontrol_kepatuhan_operator.area",
+      "ppc_tonase.kode_mesin AS kode_mesin",
     ];
     const results = await db
       .select(...query)
       .from("kontrol_kepatuhan_operator")
+      .leftOuterJoin(
+        "ppc_tonase",
+        "ppc_tonase.id",
+        "kontrol_kepatuhan_operator.id_mesin"
+      )
       .where("kontrol_kepatuhan_operator.nik", "like", worker)
       .orWhere("kontrol_kepatuhan_operator.karyawan", "like", worker)
       .orderBy("kontrol_kepatuhan_operator.tgl", "desc");
