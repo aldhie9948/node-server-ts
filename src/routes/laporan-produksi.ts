@@ -56,7 +56,7 @@ router.get("/", async function (req, res, next) {
       .select(...selectQuery)
       .from("hasil_produksi")
       .joinRaw(
-        "LEFT JOIN `mms-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
+        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
       )
       .leftOuterJoin(
         "im_area AS area",

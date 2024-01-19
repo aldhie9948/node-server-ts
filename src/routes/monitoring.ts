@@ -103,7 +103,7 @@ router.get("/press", async function (_req, res, next) {
         );
       })
       .joinRaw(
-        "LEFT JOIN `mms-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
+        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
       )
       .where("hasil_produksi.tgl_dokumen", currentDate)
       .andWhere("hasil_produksi.bagian", "like", "%02%")
@@ -214,7 +214,7 @@ router.get("/welding", async function (_req, res, next) {
         );
       })
       .joinRaw(
-        "LEFT JOIN `mms-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
+        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
       )
       .where("hasil_produksi.tgl_dokumen", currentDate)
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%02%")
