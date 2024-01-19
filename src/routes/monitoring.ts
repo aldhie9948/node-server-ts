@@ -113,6 +113,8 @@ router.get("/press", async function (_req, res, next) {
     next(error);
   }
 });
+
+// monitoring welding
 router.get("/welding", async function (_req, res, next) {
   try {
     const query = [
@@ -218,7 +220,8 @@ router.get("/welding", async function (_req, res, next) {
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%02%")
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%T%")
       .groupBy("barang")
-      .groupBy("operator");
+      .groupBy("operator")
+      .orderBy("hasil_produksi.kode_mesin", "desc");
     return res.json(result);
   } catch (error) {
     next(error);
