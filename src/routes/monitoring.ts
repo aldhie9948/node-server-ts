@@ -147,6 +147,29 @@ router.get("/press", async function (_req, res, next) {
 // monitoring welding
 router.get("/welding", async function (_req, res, next) {
   try {
+    // Get the current time
+    const currentTime = moment();
+
+    // Define shift start times
+    const shift1Start = moment("07:30", "HH:mm");
+    const shift2Start = moment("15:30", "HH:mm");
+    const shift3Start = moment("23:30", "HH:mm");
+
+    let codeShift: "01" | "02" | "03";
+
+    // Determine the current shift based on the current time
+    if (currentTime.isBetween(shift1Start, shift2Start.subtract(1, "second"))) {
+      codeShift = "01";
+    } else if (
+      currentTime.isBetween(shift2Start, shift3Start.subtract(1, "second"))
+    ) {
+      codeShift = "02";
+    } else {
+      codeShift = "03";
+    }
+    let daySubtractor =
+      codeShift === "03" && currentTime.format("HH:mm") !== "00:00" ? -1 : 0;
+
     const query = [
       "hasil_produksi.tgl_dokumen",
       "hasil_produksi.no_rencana",
@@ -247,6 +270,13 @@ router.get("/welding", async function (_req, res, next) {
         "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON hasil_produksi.operator = karyawan.nik"
       )
       .where("hasil_produksi.tgl_dokumen", currentDate)
+      .where(function () {
+        this.where(
+          "hasil_produksi.tgl_dokumen",
+          currentTime.add(daySubtractor, "day").format("YYYY-MM-DD")
+        ).where("hasil_produksi.shift", codeShift);
+      })
+
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%02%")
       .andWhereNot("hasil_produksi.bagian", "LIKE", "%T%")
       .groupBy("barang")
