@@ -13,7 +13,7 @@ router.get("/press/date/:tanggal", async function (req, res, next) {
       "kontrol_kepatuhan_operator.id_stok_masuk_detail",
       db.raw("IFNULL(kontrol_kepatuhan_operator.nik, 0) AS nik"),
       "kontrol_kepatuhan_operator.karyawan",
-      "kontrol_kepatuhan_operator.proses",
+      db.raw("UPPER(kontrol_kepatuhan_operator.proses) AS proses"),
       db.raw("IFNULL(kontrol_kepatuhan_operator.checksheet, 0) AS checksheet"),
       db.raw(
         "IFNULL(kontrol_kepatuhan_operator.verifikasi_setup, 0) AS verifikasi_setup"
@@ -72,7 +72,7 @@ router.get("/press/worker/:worker", async function (req, res, next) {
       "kontrol_kepatuhan_operator.id_stok_masuk_detail",
       db.raw("IFNULL(kontrol_kepatuhan_operator.nik, 0) AS nik"),
       "kontrol_kepatuhan_operator.karyawan",
-      "kontrol_kepatuhan_operator.proses",
+      db.raw("UPPER(kontrol_kepatuhan_operator.proses) AS proses"),
       db.raw("IFNULL(kontrol_kepatuhan_operator.checksheet, 0) AS checksheet"),
       db.raw(
         "IFNULL(kontrol_kepatuhan_operator.verifikasi_setup, 0) AS verifikasi_setup"
@@ -131,7 +131,7 @@ router.get("/welding/date/:tanggal", async function (req, res, next) {
       "kontrol_kepatuhan_operator_welding.nik",
       "kontrol_kepatuhan_operator_welding.karyawan",
       "kontrol_kepatuhan_operator_welding.id_mesin",
-      "kontrol_kepatuhan_operator_welding.proses",
+      db.raw("UPPER(kontrol_kepatuhan_operator_welding.proses) AS proses"),
       db.raw(
         "IFNULL(kontrol_kepatuhan_operator_welding.checksheet,0) AS checksheet"
       ),
@@ -197,7 +197,7 @@ router.get("/welding/worker/:worker", async function (req, res, next) {
       "kontrol_kepatuhan_operator_welding.nik",
       "kontrol_kepatuhan_operator_welding.karyawan",
       "kontrol_kepatuhan_operator_welding.id_mesin",
-      "kontrol_kepatuhan_operator_welding.proses",
+      db.raw("UPPER(kontrol_kepatuhan_operator_welding.proses) AS proses"),
       db.raw(
         "IFNULL(kontrol_kepatuhan_operator_welding.checksheet,0) AS checksheet"
       ),

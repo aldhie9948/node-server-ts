@@ -43,7 +43,7 @@ router.get("/find/worker/:text", async function (req, res, next) {
 router.get("/find/purchase-order/:text", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
-    const { text } = req.params;
+    const text = req.params.text;
     const query = [
       "im_pesanan_produk.id",
       "im_pesanan_produk.tgl_pesanan",
@@ -78,8 +78,23 @@ router.get("/find/purchase-order/:text", async function (req, res, next) {
 router.post("/auth/login", async function (req, res, next) {
   try {
     const { username, password } = req.body as ILoginForm;
+    const query = [
+      "marketing_users.id",
+      "marketing_users.nik",
+      "marketing_users.username",
+      "marketing_users.password",
+      "marketing_users.roles",
+      "marketing_users.created_at",
+      "marketing_users.updated_at",
+      "karyawan.nm_depan_karyawan AS nama",
+      dbStokBarang.raw("NULLIF(karyawan.departemen,'0') AS departemen"),
+    ];
     const isUserValid = (await dbStokBarang("marketing_users")
+      .select(...query)
       .first()
+      .joinRaw(
+        "JOIN `m-payroll`.data_karyawan AS karyawan ON marketing_users.nik = karyawan.nik"
+      )
       .where("username", username)) as IMarketingUser;
     if (!isUserValid) throw new Error("User is invalid");
     const isPasswordValid = bcrypt.compareSync(password, isUserValid.password);
@@ -96,7 +111,7 @@ router.post("/auth/login", async function (req, res, next) {
 router.get("/auth/verify", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
-    if (user.password) delete user.password;
+    if (user?.password) delete user.password;
     return res.json(user);
   } catch (error) {
     next(error);
@@ -234,10 +249,6 @@ router.get("/purchase-order/:id", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
     const { id } = req.params;
-    let { month, year } = req.query;
-    const today = moment();
-    if (!month) month = today.format("M");
-    if (!year) year = today.format("YYYY");
     const query = [
       "im_pesanan_produk.id",
       dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
@@ -255,9 +266,7 @@ router.get("/purchase-order/:id", async function (req, res, next) {
       .select(...query)
       .first()
       .where(function () {
-        this.where("im_pesanan_produk.id", id)
-          .andWhereRaw(`MONTH(im_pesanan_produk.tgl_pesanan) = ${month}`)
-          .andWhereRaw(`YEAR(im_pesanan_produk.tgl_pesanan) = ${year}`);
+        this.where("im_pesanan_produk.id", id);
       })
       .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
       .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
