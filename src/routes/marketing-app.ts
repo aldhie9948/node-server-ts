@@ -45,15 +45,16 @@ router.get("/find/purchase-order/:text", async function (req, res, next) {
     const user = verifyAuthorization(req);
     const text = req.params.text;
     const query = [
-      "im_pesanan_produk.id",
-      "im_pesanan_produk.tgl_pesanan",
       "im_pesanan_produk.customer",
       "im_pesanan_produk.kode_barang",
       "im_pesanan_produk.nama_barang",
       "im_pesanan_produk.satuan",
+      dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
+      dbStokBarang.raw("YEAR(im_pesanan_produk.tgl_pesanan) AS tahun"),
     ];
     const results = await dbStokBarang("im_pesanan_produk")
       .select(...query)
+      .distinct()
       .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
       .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
       .groupBy("im_pesanan_produk.customer")
@@ -245,10 +246,13 @@ router.get("/purchase-order", async function (req, res, next) {
   }
 });
 
-router.get("/purchase-order/:id", async function (req, res, next) {
+router.get("/purchase-order/:kode_barang", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
-    const { id } = req.params;
+    const { kode_barang } = req.params;
+    const month = req.query.month as string;
+    const year = req.query.year as string;
+    if (!month || !year) throw new Error("Month & Year are required");
     const query = [
       "im_pesanan_produk.id",
       dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
@@ -266,7 +270,9 @@ router.get("/purchase-order/:id", async function (req, res, next) {
       .select(...query)
       .first()
       .where(function () {
-        this.where("im_pesanan_produk.id", id);
+        this.where("im_pesanan_produk.kode_barang", kode_barang)
+          .andWhereRaw("MONTH(im_pesanan_produk.tgl_pesanan) = ?", month)
+          .andWhereRaw("YEAR(im_pesanan_produk.tgl_pesanan) = ?", year);
       })
       .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
       .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
@@ -286,8 +292,8 @@ router.get("/cost-calculation", async function (req, res, next) {
   try {
     try {
       const user = verifyAuthorization(req);
-      let { month, year, id } = req.query;
-      if (!id) throw new Error("ID is required");
+      let { month, year, induk } = req.query;
+      if (!induk) throw new Error("ID is required");
       const today = moment();
       if (!month) month = today.format("M");
       if (!year) year = today.format("YYYY");
@@ -331,7 +337,7 @@ router.get("/cost-calculation", async function (req, res, next) {
           );
         })
         .where(function () {
-          this.where("bom_all_level_1.induk", id)
+          this.where("bom_all_level_1.induk", induk)
             .andWhere("pesanan_customer.bulan", month)
             .andWhere("pesanan_customer.tahun", year);
         });
@@ -352,8 +358,8 @@ router.get("/cost-material", async function (req, res, next) {
     const today = moment();
     const month = Number(<string>req.query?.month) || today.format("M");
     const year = Number(<string>req.query?.year) || today.format("YYYY");
-    const id = <string>req.query.id;
-    if (!id) throw new Error("ID is required");
+    const induk = <string>req.query.induk;
+    if (!induk) throw new Error("Induk is required");
     const query = [
       "pesanan_customer.bulan",
       "pesanan_customer.tahun",
@@ -389,7 +395,7 @@ router.get("/cost-material", async function (req, res, next) {
       )
       .where("bom_all_level_1.jenis_barang", "LIKE", "%Raw Material%")
       .where(function () {
-        this.where("bom_all_level_1.induk", id)
+        this.where("bom_all_level_1.induk", induk)
           .andWhere("pesanan_customer.bulan", month)
           .andWhere("pesanan_customer.tahun", year);
       });
