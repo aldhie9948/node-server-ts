@@ -151,7 +151,7 @@ router.post("/raw-material", async function (req, res, next) {
         "histori_stok_barang.keluar",
         "histori_stok_barang.perubahan_stok AS sisa_stok",
         "histori_stok_barang.lot_material AS no_lot",
-        "histori_stok_barang.aktual AS tanggal"
+        "histori_stok_barang.tgl AS tanggal"
       )
       .from("histori_stok_barang")
       .innerJoin(

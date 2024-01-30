@@ -40,10 +40,11 @@ router.get("/find/worker/:text", async function (req, res, next) {
   }
 });
 
-router.get("/find/purchase-order/:text", async function (req, res, next) {
+router.get("/find/purchase-order", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
-    const text = req.params.text;
+    let keyword = req.query?.keyword as string;
+    if (!keyword) keyword = "";
     const query = [
       "im_pesanan_produk.customer",
       "im_pesanan_produk.kode_barang",
@@ -64,10 +65,10 @@ router.get("/find/purchase-order/:text", async function (req, res, next) {
       .orderBy("im_pesanan_produk.tgl_pesanan", "desc")
       .limit(50)
       .where(function () {
-        this.where("customer", "like", `%${text}%`)
-          .orWhere("kode_barang", "like", `%${text}%`)
-          .orWhere("nama_barang", "like", `%${text}%`)
-          .orWhere("id", "like", `%${text}%`);
+        this.where("customer", "like", `%${keyword}%`)
+          .orWhere("kode_barang", "like", `%${keyword}%`)
+          .orWhere("nama_barang", "like", `%${keyword}%`)
+          .orWhere("id", "like", `%${keyword}%`);
       });
     return res.json(results);
   } catch (error) {
@@ -123,15 +124,18 @@ router.get("/auth/verify", async function (req, res, next) {
 router.get("/users", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
-    const limit = Number(<string>req.query?.limit) || 10;
+    if (user.roles !== "ADMIN") throw new Error("User roles is invalid");
+    const limit = Number(<string>req.query?.limit) || 9999;
     const offset = Number(<string>req.query?.offset) || 0;
     const query = [
       "marketing_users.id",
       "marketing_users.nik AS nik",
       "marketing_users.username",
       "marketing_users.roles",
-      "karyawan.departemen",
-      "karyawan.nm_depan_karyawan",
+      dbStokBarang.raw(
+        "IF(karyawan.departemen='0','Lainnya',karyawan.departemen) AS departemen"
+      ),
+      "karyawan.nm_depan_karyawan AS nama",
     ];
     const result = (await dbStokBarang("marketing_users")
       .select(...query)
@@ -195,6 +199,7 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
     const user = verifyAuthorization(req);
     const { nik } = req.params;
     if (user.roles !== "ADMIN") throw new Error("Invalid roles");
+    if (user.nik === nik) throw new Error("User cannot delete itself");
     const isDeletedUserValid = (await dbStokBarang("marketing_users")
       .where({ nik })
       .first()) as IMarketingUser;
