@@ -170,7 +170,6 @@ router.post("/raw-material", async function (req, res, next) {
       .orWhere("tipe_barang.kode", code)
       .distinct("histori_stok_barang.id")
       .limit(parseInt(limit))
-      .orderBy("histori_stok_barang.aktual", "desc")
       .orderBy("histori_stok_barang.tgl", "desc");
 
     return res.json(items);
