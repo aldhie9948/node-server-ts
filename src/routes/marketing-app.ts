@@ -13,9 +13,10 @@ const SALT = 10;
 const secret_key = process.env.SECRET_KEY_APP;
 
 // ! SELECT ENDPOINT
-router.get("/find/worker/:text", async function (req, res, next) {
+router.get("/find/worker", async function (req, res, next) {
   try {
-    const { text } = req.params;
+    const keyword: string = (req.query.keyword as string) || "";
+    const limit: number = Number(req.query.limit as string) || 20;
     const query = [
       "data_karyawan.nik",
       "data_karyawan.nm_depan_karyawan AS karyawan",
@@ -25,15 +26,20 @@ router.get("/find/worker/:text", async function (req, res, next) {
     const result = await dbPayroll("data_karyawan")
       .select(...query)
       .distinct("data_karyawan.nik")
+      .joinRaw(
+        "LEFT OUTER JOIN `stok_barang`.marketing_users AS users ON users.nik = data_karyawan.nik"
+      )
+      .whereNull("users.nik")
       .where(function () {
-        this.where("data_karyawan.nik", "LIKE", `%${text}%`).orWhere(
+        this.where("data_karyawan.nik", "LIKE", `%${keyword}%`).orWhere(
           "data_karyawan.nm_depan_karyawan",
           "LIKE",
-          `%${text}%`
+          `%${keyword}%`
         );
       })
       .whereIn("data_karyawan.departemen", allowedDepartement)
-      .orderBy("data_karyawan.departemen");
+      .limit(limit)
+      .orderBy(["data_karyawan.departemen", "data_karyawan.nm_depan_karyawan"]);
     return res.json(result);
   } catch (error) {
     next(error);
@@ -150,6 +156,33 @@ router.get("/users", async function (req, res, next) {
   }
 });
 
+router.get("/users/:nik", async function (req, res, next) {
+  try {
+    verifyAuthorization(req);
+    const { nik } = req.params;
+    const query = [
+      "marketing_users.id",
+      "marketing_users.nik AS nik",
+      "marketing_users.username",
+      "marketing_users.roles",
+      dbStokBarang.raw(
+        "IF(karyawan.departemen='0','Lainnya',karyawan.departemen) AS departemen"
+      ),
+      "karyawan.nm_depan_karyawan AS nama",
+    ];
+    const result = await dbStokBarang("marketing_users")
+      .select(...query)
+      .first()
+      .joinRaw(
+        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON karyawan.nik = marketing_users.nik"
+      )
+      .where("marketing_users.nik", nik);
+    return res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/users/signup", async function (req, res, next) {
   try {
     const body = req.body as ISignUpFormMarketing;
@@ -183,11 +216,11 @@ router.put("/users/update", async function (req, res, next) {
     const user = verifyAuthorization(req);
     const body = req.body as Partial<IMarketingUser>;
     // ? user cannot modify other than his/her account
-    if (user.roles === "USER" && user.nik !== body.nik)
-      throw new Error("Invalid user/nik");
-    if (body.roles) delete body.roles;
+    if (user.roles === "USER") throw new Error("Invalid roles");
     if (body.password) body.password = bcrypt.hashSync(body.password, SALT);
-    const result = await dbStokBarang("marketing_users").update(body);
+    const result = await dbStokBarang("marketing_users")
+      .update(body)
+      .where("nik", body.nik);
     return res.json(result);
   } catch (error) {
     next(error);
@@ -200,11 +233,15 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
     const { nik } = req.params;
     if (user.roles !== "ADMIN") throw new Error("Invalid roles");
     if (user.nik === nik) throw new Error("User cannot delete itself");
+
     const isDeletedUserValid = (await dbStokBarang("marketing_users")
       .where({ nik })
       .first()) as IMarketingUser;
     if (!isDeletedUserValid) throw new Error("Selected user is invalid");
-    if (isDeletedUserValid.roles === "ADMIN")
+    if (
+      isDeletedUserValid.roles === "ADMIN" &&
+      user.username !== process.env.SUPERUSER_ACCOUNT
+    )
       throw new Error("Selected user is ADMIN that cannot be deleted");
     const result = await dbStokBarang("marketing_users")
       .where({ nik })
