@@ -46,7 +46,7 @@ router.get(
         "ig.nama_barang",
         "ig.jenis_material",
         "ig.satuan",
-        "ig.stok",
+        stok_barang_knex.raw("IFNULL(ig.stok, 0) AS stok"),
         "tp.nama AS nama_material",
         "ig.kategori",
       ];
@@ -120,13 +120,13 @@ router.get("/raw-material/transactions", async function (req, res, next) {
       "ig.kode_barang",
       "ig.nama_barang",
       "ig.satuan",
-      "ig.stok",
+      stok_barang_knex.raw("IFNULL(ig.stok, 0) AS stok"),
       "hsb.tgl",
       "hsb.masuk",
       "hsb.keluar",
-      "hsb.perubahan_stok AS stok_awal",
+      stok_barang_knex.raw("IFNULL(hsb.perubahan_stok,0) AS stok_awal"),
       stok_barang_knex.raw(
-        "(hsb.perubahan_stok + hsb.masuk - hsb.keluar) AS perubahan_stok"
+        "IFNULL((IFNULL(hsb.perubahan_stok,0) + IFNULL(hsb.masuk,0) - IFNULL(hsb.keluar,0)),0) AS perubahan_stok"
       ),
       "hsb.lot_material",
       "ig.gudang",
