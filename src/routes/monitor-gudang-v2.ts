@@ -115,7 +115,6 @@ router.get("/raw-material/transactions", async function (req, res, next) {
     else start = moment(startQuery).utc(true).format();
     if (!endQuery) end = moment().endOf("month").utc(true).format();
     else end = moment(endQuery).utc(true).format();
-    console.log({ start, end });
     const query = [
       "ig.kode_barang",
       "ig.nama_barang",
@@ -152,5 +151,60 @@ router.get("/raw-material/transactions", async function (req, res, next) {
     next(error);
   }
 });
+
+router.get(
+  "/raw-material/transactions/latest",
+  async function (req, res, next) {
+    try {
+      const categoryId = req.query.categoryId as string;
+      const limit = req.query.limit as string;
+      const plant = getPlant(req);
+
+      if (!categoryId) throw new Error("Part Type is undefined");
+      const query = [
+        "ig.kode_barang",
+        "ig.nama_barang",
+        "ig.satuan",
+        stok_barang_knex.raw("IFNULL(ig.stok, 0) AS stok"),
+        "hsb.tgl",
+        "hsb.masuk",
+        "hsb.keluar",
+        stok_barang_knex.raw("IFNULL(hsb.perubahan_stok,0) AS stok_awal"),
+        stok_barang_knex.raw(
+          "IFNULL((IFNULL(hsb.perubahan_stok,0) + IFNULL(hsb.masuk,0) - IFNULL(hsb.keluar,0)),0) AS perubahan_stok"
+        ),
+        "hsb.lot_material",
+        "ig.gudang",
+        stok_barang_knex.raw("IF(hsb.plant='','Induk',hsb.plant) AS plant"),
+        "ig.jenis_material",
+        "tp.nama AS nama_material",
+      ];
+      const data = await stok_barang_knex("item_gudang AS ig")
+        .select(...query)
+        .innerJoin("histori_stok_barang AS hsb", "hsb.barang", "ig.kode_barang")
+        .leftJoin("tipe_barang AS tp", "tp.kode", "ig.jenis_material")
+        .where(function () {
+          this.where("hsb.plant", "like", `%${plant}%`)
+            .whereNotNull("hsb.tgl")
+            .andWhere("hsb.tgl", "!=", "0000-00-00");
+        })
+        .where(function () {
+          this.where("ig.jenis_material", categoryId).where(
+            "ig.kategori",
+            "like",
+            "%RAW MATERIAL%"
+          );
+        })
+        .where(function () {
+          this.where("hsb.masuk", "!=", 0).orWhere("hsb.keluar", "!=", 0);
+        })
+        .limit(Number(limit) || 5)
+        .orderBy("hsb.tgl", "desc");
+      return res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 export default router;
