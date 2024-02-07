@@ -10,11 +10,14 @@ const router = Router();
 const dbPayroll = initKnex("m-payroll");
 const dbStokBarang = initKnex("stok_barang");
 const SALT = 10;
-const secret_key = process.env.SECRET_KEY_APP;
+const SECRET_KEY = process.env.SECRET_KEY_APP as string;
+const SUPERUSER_ACC = process.env.SUPERUSER_ACCOUNT as string;
+const SUPERUSER_ID = process.env.SUPERUSER_ID as string;
 
 // ! SELECT ENDPOINT
 router.get("/find/worker", async function (req, res, next) {
   try {
+    verifyAuthorization(req);
     const keyword: string = (req.query.keyword as string) || "";
     const limit: number = Number(req.query.limit as string) || 20;
     const query = [
@@ -48,7 +51,7 @@ router.get("/find/worker", async function (req, res, next) {
 
 router.get("/find/purchase-order", async function (req, res, next) {
   try {
-    const user = verifyAuthorization(req);
+    verifyAuthorization(req);
     let keyword = req.query?.keyword as string;
     if (!keyword) keyword = "";
     const query = [
@@ -82,6 +85,22 @@ router.get("/find/purchase-order", async function (req, res, next) {
   }
 });
 
+router.get("/find/users", async function (req, res, next) {
+  try {
+    verifyAuthorization(req);
+    let keyword = req.query.keyword as string;
+    if (!keyword) keyword = "";
+    const query = ["mu.username", "mu.nik", "mu.id", "mu.roles"];
+    const data = await dbStokBarang("marketing_users AS mu")
+      .select(...query)
+      .where("mu.nik", "like", `%${keyword}%`)
+      .orWhere("mu.username", "like", `%${keyword}%`);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ! AUTH ENDPOINT
 router.post("/auth/login", async function (req, res, next) {
   try {
@@ -107,7 +126,7 @@ router.post("/auth/login", async function (req, res, next) {
     if (!isUserValid) throw new Error("User is invalid");
     const isPasswordValid = bcrypt.compareSync(password, isUserValid.password);
     if (!isPasswordValid) throw new Error("Password is invalid");
-    const token = jwt.sign({ ...isUserValid }, <string>secret_key, {
+    const token = jwt.sign({ ...isUserValid }, <string>SECRET_KEY, {
       expiresIn: "12h",
     });
     return res.json({ token });
@@ -215,6 +234,8 @@ router.put("/users/update", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
     const body = req.body as Partial<IMarketingUser>;
+    // ? username author cannot be changed
+    if (body?.nik === SUPERUSER_ID) body.username = SUPERUSER_ACC;
     // ? user cannot modify other than his/her account
     if (user.roles === "USER") throw new Error("Invalid roles");
     if (body.password) body.password = bcrypt.hashSync(body.password, SALT);
@@ -233,16 +254,14 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
     const { nik } = req.params;
     if (user.roles !== "ADMIN") throw new Error("Invalid roles");
     if (user.nik === nik) throw new Error("User cannot delete itself");
-
     const isDeletedUserValid = (await dbStokBarang("marketing_users")
       .where({ nik })
       .first()) as IMarketingUser;
     if (!isDeletedUserValid) throw new Error("Selected user is invalid");
-    if (
-      isDeletedUserValid.roles === "ADMIN" &&
-      user.username !== process.env.SUPERUSER_ACCOUNT
-    )
+    if (isDeletedUserValid.roles === "ADMIN" && user?.nik !== SUPERUSER_ID)
       throw new Error("Selected user is ADMIN that cannot be deleted");
+    if (nik === SUPERUSER_ID || isDeletedUserValid?.username === SUPERUSER_ACC)
+      throw new Error("Author cannot be deleted");
     const result = await dbStokBarang("marketing_users")
       .where({ nik })
       .delete();
@@ -255,7 +274,7 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
 // ! PURCHASE ORDER ENDPOINT
 router.get("/purchase-order", async function (req, res, next) {
   try {
-    const user = verifyAuthorization(req);
+    verifyAuthorization(req);
     const limit = Number(<string>req.query?.limit) || 20;
     const offset = Number(<string>req.query?.offset) || 0;
     const query = [
@@ -290,7 +309,7 @@ router.get("/purchase-order", async function (req, res, next) {
 
 router.get("/purchase-order/:kode_barang", async function (req, res, next) {
   try {
-    const user = verifyAuthorization(req);
+    verifyAuthorization(req);
     const { kode_barang } = req.params;
     const month = req.query.month as string;
     const year = req.query.year as string;
@@ -333,7 +352,7 @@ router.get("/purchase-order/:kode_barang", async function (req, res, next) {
 router.get("/cost-calculation", async function (req, res, next) {
   try {
     try {
-      const user = verifyAuthorization(req);
+      verifyAuthorization(req);
       let { month, year, induk } = req.query;
       if (!induk) throw new Error("ID is required");
       const today = moment();
@@ -396,7 +415,7 @@ router.get("/cost-calculation", async function (req, res, next) {
 // ! COST MATERIAL ENDPOINT
 router.get("/cost-material", async function (req, res, next) {
   try {
-    const user = verifyAuthorization(req);
+    verifyAuthorization(req);
     const today = moment();
     const month = Number(<string>req.query?.month) || today.format("M");
     const year = Number(<string>req.query?.year) || today.format("YYYY");
@@ -442,6 +461,100 @@ router.get("/cost-material", async function (req, res, next) {
           .andWhere("pesanan_customer.tahun", year);
       });
     return res.json(results);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ! LOGS USER
+router.get("/logs", async function (req, res, next) {
+  try {
+    verifyAuthorization(req);
+    let limit = (req.query.limit || "100") as string;
+    let start = req.query.start as string;
+    let end = req.query.end as string;
+
+    // default start date
+    if (!start) start = moment().startOf("day").utc(true).format();
+    else start = moment(start).startOf("day").utc(true).format();
+    // default end date
+    if (!end) end = moment().endOf("day").utc(true).format();
+    else end = moment(end).endOf("day").utc(true).format();
+
+    const data = await dbStokBarang("marketing_users_log AS mul")
+      .select("*")
+      .where(function () {
+        this.whereBetween("created_at", [start, end]);
+      })
+      .limit(Number(limit));
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/logs/:username", async function (req, res, next) {
+  try {
+    const user = verifyAuthorization(req);
+    const username = req.params.username as string;
+    let limit = (req.query.limit || "50") as string;
+    let start = req.query.start as string;
+    let end = req.query.end as string;
+    if (user.username !== username) throw new Error("Username is not match");
+    // default start date
+    if (!start) start = moment().startOf("day").utc(true).format();
+    else start = moment(start).startOf("day").utc(true).format();
+    // default end date
+    if (!end) end = moment().endOf("day").utc(true).format();
+    else end = moment(end).endOf("day").utc(true).format();
+
+    const data = await dbStokBarang("marketing_users_log AS mul")
+      .select("*")
+      .where("mul.username", username)
+      .where(function () {
+        this.whereBetween("created_at", [start, end]);
+      })
+      .limit(Number(limit));
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/logs", async function (req, res, next) {
+  try {
+    const body = req.body as {
+      log: string;
+      username: string | null;
+      ip_address: string;
+    };
+    if (!body.log) throw new Error("Log cannot be empty");
+    const isUserValid = await dbStokBarang("marketing_users AS mu")
+      .select("*")
+      .where("mu.username", body.username)
+      .first();
+    if (!isUserValid) body.username = null;
+    const data = await dbStokBarang("marketing_users_log").insert({
+      ...body,
+      log: body.log.toLowerCase(),
+    });
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/logs/:log_id", async function (req, res, next) {
+  try {
+    const user = verifyAuthorization(req);
+    if (user.roles !== "ADMIN") throw new Error("Invalid roles");
+    const logId = req.params.log_id;
+    const id: number = Number(logId);
+    if (!id) throw new Error("Invalid Log ID");
+    const data = await dbStokBarang("marketing_users_log")
+      .where("id", id)
+      .delete();
+    return res.json(data);
   } catch (error) {
     next(error);
   }
