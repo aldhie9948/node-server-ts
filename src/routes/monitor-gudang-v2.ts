@@ -164,7 +164,7 @@ router.get(
         .leftJoin("tipe_barang AS tp", "tp.kode", "ig.jenis_material")
         .where(function () {
           this.where("ig.jenis_material", "like", categoryId)
-            .where("ig.kategori", "like", "%RAW MATERIAL%")
+            .where("ig.gudang", "like", "%Raw Material%")
             .andWhere("hsb.tgl", "!=", "0000-00-00");
         })
         .where("ig.plant", "like", `%${plant}%`)
