@@ -127,7 +127,7 @@ router.post("/auth/login", async function (req, res, next) {
     const isPasswordValid = bcrypt.compareSync(password, isUserValid.password);
     if (!isPasswordValid) throw new Error("Password is invalid");
     const token = jwt.sign({ ...isUserValid }, <string>SECRET_KEY, {
-      expiresIn: "12h",
+      expiresIn: "1h",
     });
     return res.json({ token });
   } catch (error) {
