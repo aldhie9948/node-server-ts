@@ -469,8 +469,12 @@ router.get("/cost-material", async function (req, res, next) {
 // ! LOGS USER
 router.get("/logs", async function (req, res, next) {
   try {
-    verifyAuthorization(req);
+    const user = verifyAuthorization(req);
+
+    if (user.roles !== "ADMIN") throw new Error("User roles is invalid");
+
     let limit = (req.query.limit || "100") as string;
+    let offset = (req.query.offset || "0") as string;
     let start = req.query.start as string;
     let end = req.query.end as string;
 
@@ -486,8 +490,33 @@ router.get("/logs", async function (req, res, next) {
       .where(function () {
         this.whereBetween("created_at", [start, end]);
       })
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .offset(Number(offset) * Number(limit))
+      .orderBy("mul.created_at", "desc");
+
     return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/logs/count", async function (req, res, next) {
+  try {
+    verifyAuthorization(req);
+    const username = (req.query.username as string) || "";
+
+    const query = [
+      dbStokBarang.raw("COUNT(mul.username) AS total"),
+      "mul.username",
+    ];
+    const result = await dbStokBarang("marketing_users_log AS mul")
+      .select(...query)
+      .where(function () {
+        if (username) this.where("mul.username", username);
+      })
+      .orderBy("mul.created_at", "desc")
+      .groupBy("mul.username");
+    return res.json(result);
   } catch (error) {
     next(error);
   }
@@ -497,9 +526,10 @@ router.get("/logs/:username", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
     const username = req.params.username as string;
-    let limit = (req.query.limit || "50") as string;
     let start = req.query.start as string;
     let end = req.query.end as string;
+    let offset = (req.query.offset as string) || "0";
+    let range = (req.query.range as string) || "10";
     if (user.username !== username) throw new Error("Username is not match");
     // default start date
     if (!start) start = moment().startOf("day").utc(true).format();
@@ -514,7 +544,9 @@ router.get("/logs/:username", async function (req, res, next) {
       .where(function () {
         this.whereBetween("created_at", [start, end]);
       })
-      .limit(Number(limit));
+      .limit(Number(range))
+      .offset(Number(offset) * Number(range))
+      .orderBy("mul.created_at", "desc");
     return res.json(data);
   } catch (error) {
     next(error);
@@ -538,6 +570,7 @@ router.post("/logs", async function (req, res, next) {
       ...body,
       log: body.log.toLowerCase(),
     });
+
     return res.json(data);
   } catch (error) {
     next(error);
