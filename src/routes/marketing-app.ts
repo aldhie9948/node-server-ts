@@ -7,78 +7,85 @@ import { ILoginForm, IMarketingUser, ISignUpFormMarketing } from "../lib/types";
 import { hasAllProperties, verifyAuthorization } from "../lib/utils";
 
 const router = Router();
-const dbPayroll = initKnex("m-payroll");
-const dbStokBarang = initKnex("stok_barang");
+const dbpr = initKnex("m-payroll");
+const dbsb = initKnex("stok_barang");
 const SALT = 10;
 const SECRET_KEY = process.env.SECRET_KEY_APP as string;
 const SUPERUSER_ACC = process.env.SUPERUSER_ACCOUNT as string;
 const SUPERUSER_ID = process.env.SUPERUSER_ID as string;
+const EXPIRES_HOUR = "5h";
 
-// ! SELECT ENDPOINT
+// ! SELECT ENDPOINT ✅
 router.get("/find/worker", async function (req, res, next) {
   try {
     verifyAuthorization(req);
     const keyword: string = (req.query.keyword as string) || "";
     const limit: number = Number(req.query.limit as string) || 20;
     const query = [
-      "data_karyawan.nik",
-      "data_karyawan.nm_depan_karyawan AS karyawan",
-      "data_karyawan.departemen",
+      "dkr.nik",
+      "dkr.nm_depan_karyawan AS karyawan",
+      "dkr.departemen",
     ];
     const allowedDepartement = ["Finance", "IT", "Marketing"];
-    const result = await dbPayroll("data_karyawan")
+    const result = await dbpr("data_karyawan AS dkr")
       .select(...query)
-      .distinct("data_karyawan.nik")
+      .distinct("dkr.nik")
       .joinRaw(
-        "LEFT OUTER JOIN `stok_barang`.marketing_users AS users ON users.nik = data_karyawan.nik"
+        "LEFT OUTER JOIN `stok_barang`.marketing_users AS users ON users.nik = dkr.nik"
       )
       .whereNull("users.nik")
       .where(function () {
-        this.where("data_karyawan.nik", "LIKE", `%${keyword}%`).orWhere(
-          "data_karyawan.nm_depan_karyawan",
+        this.where("dkr.nik", "LIKE", `%${keyword}%`).orWhere(
+          "dkr.nm_depan_karyawan",
           "LIKE",
           `%${keyword}%`
         );
       })
-      .whereIn("data_karyawan.departemen", allowedDepartement)
+      .whereIn("dkr.departemen", allowedDepartement)
       .limit(limit)
-      .orderBy(["data_karyawan.departemen", "data_karyawan.nm_depan_karyawan"]);
+      .orderBy(["dkr.departemen", "dkr.nm_depan_karyawan"]);
     return res.json(result);
   } catch (error) {
     next(error);
   }
 });
 
+// ✅✅
 router.get("/find/purchase-order", async function (req, res, next) {
   try {
     verifyAuthorization(req);
     let keyword = req.query?.keyword as string;
     if (!keyword) keyword = "";
     const query = [
-      "im_pesanan_produk.customer",
-      "im_pesanan_produk.kode_barang",
-      "im_pesanan_produk.nama_barang",
-      "im_pesanan_produk.satuan",
-      dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
-      dbStokBarang.raw("YEAR(im_pesanan_produk.tgl_pesanan) AS tahun"),
+      dbsb.raw("MONTH(ipp.tgl_pesanan) AS bulan"),
+      dbsb.raw("YEAR(ipp.tgl_pesanan) AS tahun"),
+      "ipp.kode_barang",
+      "ipp.nama_barang",
+      dbsb.raw("SUM(ipp.qty) AS qty"),
+      "ipp.customer",
+      "ipp.id",
+      "ipp.tgl_pesanan",
     ];
-    const results = await dbStokBarang("im_pesanan_produk")
+
+    const results = await dbsb("im_pesanan_produk AS ipp")
       .select(...query)
-      .distinct()
-      .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
-      .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
-      .groupBy("im_pesanan_produk.customer")
-      .groupBy("im_pesanan_produk.kode_barang")
-      .groupBy("im_pesanan_produk.nama_barang")
-      .groupBy("im_pesanan_produk.satuan")
-      .orderBy("im_pesanan_produk.tgl_pesanan", "desc")
       .limit(50)
+      .whereNot("ipp.harga", 0)
       .where(function () {
-        this.where("customer", "like", `%${keyword}%`)
-          .orWhere("kode_barang", "like", `%${keyword}%`)
-          .orWhere("nama_barang", "like", `%${keyword}%`)
-          .orWhere("id", "like", `%${keyword}%`);
-      });
+        this.where("ipp.customer", "LIKE", `%${keyword}%`)
+          .orWhere("ipp.kode_barang", "LIKE", `%${keyword}%`)
+          .orWhere("ipp.nama_barang", "LIKE", `%${keyword}%`)
+          .orWhere("ipp.id", "LIKE", `%${keyword}%`);
+      })
+      .groupByRaw("MONTH(ipp.tgl_pesanan)")
+      .groupByRaw("YEAR(ipp.tgl_pesanan)")
+      .groupBy("ipp.kode_barang")
+      .groupBy("ipp.nama_barang")
+      .groupBy("ipp.customer")
+      .groupBy("ipp.harga")
+      .orderBy("ipp.customer", "asc")
+      .orderBy("ipp.tgl_pesanan", "desc");
+
     return res.json(results);
   } catch (error) {
     next(error);
@@ -91,7 +98,7 @@ router.get("/find/users", async function (req, res, next) {
     let keyword = req.query.keyword as string;
     if (!keyword) keyword = "";
     const query = ["mu.username", "mu.nik", "mu.id", "mu.roles"];
-    const data = await dbStokBarang("marketing_users AS mu")
+    const data = await dbsb("marketing_users AS mu")
       .select(...query)
       .where("mu.nik", "like", `%${keyword}%`)
       .orWhere("mu.username", "like", `%${keyword}%`);
@@ -101,33 +108,31 @@ router.get("/find/users", async function (req, res, next) {
   }
 });
 
-// ! AUTH ENDPOINT
+// ! AUTH ENDPOINT ✅
 router.post("/auth/login", async function (req, res, next) {
   try {
     const { username, password } = req.body as ILoginForm;
     const query = [
-      "marketing_users.id",
-      "marketing_users.nik",
-      "marketing_users.username",
-      "marketing_users.password",
-      "marketing_users.roles",
-      "marketing_users.created_at",
-      "marketing_users.updated_at",
-      "karyawan.nm_depan_karyawan AS nama",
-      dbStokBarang.raw("NULLIF(karyawan.departemen,'0') AS departemen"),
+      "mu.id",
+      "mu.nik",
+      "mu.username",
+      "mu.password",
+      "mu.roles",
+      "mu.created_at",
+      "mu.updated_at",
+      "kry.nm_depan_karyawan AS nama",
+      dbsb.raw("NULLIF(kry.departemen,'0') AS departemen"),
     ];
-    const isUserValid = (await dbStokBarang("marketing_users")
+    const isUserValid = (await dbsb("marketing_users AS mu")
       .select(...query)
       .first()
-      .joinRaw(
-        "JOIN `m-payroll`.data_karyawan AS karyawan ON marketing_users.nik = karyawan.nik"
-      )
-      .where("username", username)) as IMarketingUser;
+      .joinRaw("JOIN `m-payroll`.data_karyawan AS kry ON mu.nik = kry.nik")
+      .where("mu.username", username)) as IMarketingUser;
     if (!isUserValid) throw new Error("User is invalid");
     const isPasswordValid = bcrypt.compareSync(password, isUserValid.password);
     if (!isPasswordValid) throw new Error("Password is invalid");
     const token = jwt.sign({ ...isUserValid }, <string>SECRET_KEY, {
-      expiresIn: "1h",
+      expiresIn: EXPIRES_HOUR,
     });
     return res.json({ token });
   } catch (error) {
@@ -145,7 +150,7 @@ router.get("/auth/verify", async function (req, res, next) {
   }
 });
 
-// ! USER ENDPOINT
+// ! USER ENDPOINT ✅
 router.get("/users", async function (req, res, next) {
   try {
     const user = verifyAuthorization(req);
@@ -153,21 +158,21 @@ router.get("/users", async function (req, res, next) {
     const limit = Number(<string>req.query?.limit) || 9999;
     const offset = Number(<string>req.query?.offset) || 0;
     const query = [
-      "marketing_users.id",
-      "marketing_users.nik AS nik",
-      "marketing_users.username",
-      "marketing_users.roles",
-      dbStokBarang.raw(
-        "IF(karyawan.departemen='0','Lainnya',karyawan.departemen) AS departemen"
+      "mu.id",
+      "mu.nik AS nik",
+      "mu.username",
+      "mu.roles",
+      dbsb.raw(
+        "IF(kry.departemen='0','Lainnya', kry.departemen) AS departemen"
       ),
-      "karyawan.nm_depan_karyawan AS nama",
+      "kry.nm_depan_karyawan AS nama",
     ];
-    const result = (await dbStokBarang("marketing_users")
+    const result = (await dbsb("marketing_users AS mu")
       .select(...query)
       .limit(limit, { skipBinding: true })
       .offset(offset * limit, { skipBinding: true })
       .joinRaw(
-        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON karyawan.nik = marketing_users.nik"
+        "LEFT JOIN `m-payroll`.data_karyawan AS kry ON kry.nik = mu.nik"
       )) as Partial<IMarketingUser[]>;
     return res.json(result);
   } catch (error) {
@@ -175,33 +180,31 @@ router.get("/users", async function (req, res, next) {
   }
 });
 
+// ✅
 router.get("/users/:nik", async function (req, res, next) {
   try {
     verifyAuthorization(req);
     const { nik } = req.params;
     const query = [
-      "marketing_users.id",
-      "marketing_users.nik AS nik",
-      "marketing_users.username",
-      "marketing_users.roles",
-      dbStokBarang.raw(
-        "IF(karyawan.departemen='0','Lainnya',karyawan.departemen) AS departemen"
-      ),
-      "karyawan.nm_depan_karyawan AS nama",
+      "mu.id",
+      "mu.nik AS nik",
+      "mu.username",
+      "mu.roles",
+      dbsb.raw("IF(kry.departemen='0','Lainnya',kry.departemen) AS departemen"),
+      "kry.nm_depan_karyawan AS nama",
     ];
-    const result = await dbStokBarang("marketing_users")
+    const result = await dbsb("marketing_users AS mu")
       .select(...query)
       .first()
-      .joinRaw(
-        "LEFT JOIN `m-payroll`.data_karyawan AS karyawan ON karyawan.nik = marketing_users.nik"
-      )
-      .where("marketing_users.nik", nik);
+      .joinRaw("LEFT JOIN `m-payroll`.data_karyawan AS kry ON kry.nik = mu.nik")
+      .where("mu.nik", nik);
     return res.json(result);
   } catch (error) {
     next(error);
   }
 });
 
+// ✅
 router.post("/users/signup", async function (req, res, next) {
   try {
     const body = req.body as ISignUpFormMarketing;
@@ -214,16 +217,16 @@ router.post("/users/signup", async function (req, res, next) {
 
     if (!hasAllProperties(body, requiredProperties))
       throw new Error("Required field is undefined");
-    const isNikValid = await dbPayroll("data_karyawan")
+    const isNikValid = await dbpr("data_karyawan AS dkr")
       .first()
-      .where("data_karyawan.nik", body.nik);
+      .where("dkr.nik", body.nik);
     if (!isNikValid) throw new Error("NIK is invalid");
     const encryptedPassword = bcrypt.hashSync(body.password, SALT);
     const data: ISignUpFormMarketing = {
       ...body,
       password: encryptedPassword,
     };
-    const result = await dbStokBarang("marketing_users").insert(data);
+    const result = await dbsb("marketing_users").insert(data);
     return res.json(result);
   } catch (error) {
     next(error);
@@ -239,7 +242,7 @@ router.put("/users/update", async function (req, res, next) {
     // ? user cannot modify other than his/her account
     if (user.roles === "USER") throw new Error("Invalid roles");
     if (body.password) body.password = bcrypt.hashSync(body.password, SALT);
-    const result = await dbStokBarang("marketing_users")
+    const result = await dbsb("marketing_users")
       .update(body)
       .where("nik", body.nik);
     return res.json(result);
@@ -254,7 +257,7 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
     const { nik } = req.params;
     if (user.roles !== "ADMIN") throw new Error("Invalid roles");
     if (user.nik === nik) throw new Error("User cannot delete itself");
-    const isDeletedUserValid = (await dbStokBarang("marketing_users")
+    const isDeletedUserValid = (await dbsb("marketing_users")
       .where({ nik })
       .first()) as IMarketingUser;
     if (!isDeletedUserValid) throw new Error("Selected user is invalid");
@@ -262,9 +265,7 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
       throw new Error("Selected user is ADMIN that cannot be deleted");
     if (nik === SUPERUSER_ID || isDeletedUserValid?.username === SUPERUSER_ACC)
       throw new Error("Author cannot be deleted");
-    const result = await dbStokBarang("marketing_users")
-      .where({ nik })
-      .delete();
+    const result = await dbsb("marketing_users").where({ nik }).delete();
     return res.json(result);
   } catch (error) {
     next(error);
@@ -272,76 +273,44 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
 });
 
 // ! PURCHASE ORDER ENDPOINT
+// ✅✅
 router.get("/purchase-order", async function (req, res, next) {
   try {
     verifyAuthorization(req);
-    const limit = Number(<string>req.query?.limit) || 20;
-    const offset = Number(<string>req.query?.offset) || 0;
+    const { induk, month, year, customer } = req.query;
+    Object.entries({ induk, month, year, customer }).forEach(([key, value]) => {
+      if (!value) throw new Error(key.concat(" is required"));
+    });
     const query = [
-      "im_pesanan_produk.id",
-      dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
-      dbStokBarang.raw("YEAR(im_pesanan_produk.tgl_pesanan) AS tahun"),
-      "im_pesanan_produk.tgl_pesanan",
-      "im_pesanan_produk.customer",
-      "im_pesanan_produk.kode_barang",
-      "im_pesanan_produk.nama_barang",
-      "im_pesanan_produk.satuan",
-      dbStokBarang.raw("SUM(im_pesanan_produk.qty) AS qty"),
-      dbStokBarang.raw("MAX(im_pesanan_produk.harga) AS harga"),
-      dbStokBarang.raw("IFNULL(SUM(qty) * MAX(harga),0) AS total"),
+      "ipp.id",
+      dbsb.raw("MONTH(ipp.tgl_pesanan) AS bulan"),
+      dbsb.raw("YEAR(ipp.tgl_pesanan) AS tahun"),
+      "ipp.tgl_pesanan",
+      "ipp.customer",
+      "ipp.kode_barang",
+      "ipp.nama_barang",
+      "ipp.satuan",
+      dbsb.raw("SUM(ipp.qty) AS qty"),
+      dbsb.raw("MAX(ipp.harga) AS harga"),
+      dbsb.raw("IFNULL(SUM(ipp.qty) * MAX(ipp.harga),0) AS total"),
     ];
-    const results = await dbStokBarang("im_pesanan_produk")
-      .select(...query)
-      .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
-      .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
-      .groupBy("im_pesanan_produk.customer")
-      .groupBy("im_pesanan_produk.kode_barang")
-      .groupBy("im_pesanan_produk.nama_barang")
-      .groupBy("im_pesanan_produk.satuan")
-      .orderBy("im_pesanan_produk.tgl_pesanan", "desc")
-      .offset(offset * limit, { skipBinding: true })
-      .limit(limit, { skipBinding: true });
-    return res.json(results);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/purchase-order/:kode_barang", async function (req, res, next) {
-  try {
-    verifyAuthorization(req);
-    const { kode_barang } = req.params;
-    const month = req.query.month as string;
-    const year = req.query.year as string;
-    if (!month || !year) throw new Error("Month & Year are required");
-    const query = [
-      "im_pesanan_produk.id",
-      dbStokBarang.raw("MONTH(im_pesanan_produk.tgl_pesanan) AS bulan"),
-      dbStokBarang.raw("YEAR(im_pesanan_produk.tgl_pesanan) AS tahun"),
-      "im_pesanan_produk.tgl_pesanan",
-      "im_pesanan_produk.customer",
-      "im_pesanan_produk.kode_barang",
-      "im_pesanan_produk.nama_barang",
-      "im_pesanan_produk.satuan",
-      dbStokBarang.raw("SUM(im_pesanan_produk.qty) AS qty"),
-      dbStokBarang.raw("MAX(im_pesanan_produk.harga) AS harga"),
-      dbStokBarang.raw("IFNULL(SUM(qty) * MAX(harga),0) AS total"),
-    ];
-    const results = await dbStokBarang("im_pesanan_produk")
+    const results = await dbsb("im_pesanan_produk AS ipp")
       .select(...query)
       .first()
+      .whereNot("ipp.harga", 0)
       .where(function () {
-        this.where("im_pesanan_produk.kode_barang", kode_barang)
-          .andWhereRaw("MONTH(im_pesanan_produk.tgl_pesanan) = ?", month)
-          .andWhereRaw("YEAR(im_pesanan_produk.tgl_pesanan) = ?", year);
+        this.where("ipp.kode_barang", induk)
+          .andWhere("ipp.customer", customer)
+          .andWhereRaw("MONTH(ipp.tgl_pesanan) = ?", month)
+          .andWhereRaw("YEAR(ipp.tgl_pesanan) = ?", year);
       })
-      .groupByRaw("MONTH(im_pesanan_produk.tgl_pesanan)")
-      .groupByRaw("YEAR(im_pesanan_produk.tgl_pesanan)")
-      .groupBy("im_pesanan_produk.customer")
-      .groupBy("im_pesanan_produk.kode_barang")
-      .groupBy("im_pesanan_produk.nama_barang")
-      .groupBy("im_pesanan_produk.satuan")
-      .orderBy("im_pesanan_produk.tgl_pesanan", "desc");
+      .groupByRaw("MONTH(ipp.tgl_pesanan)")
+      .groupByRaw("YEAR(ipp.tgl_pesanan)")
+      .groupBy("ipp.customer")
+      .groupBy("ipp.kode_barang")
+      .groupBy("ipp.nama_barang")
+      .groupBy("ipp.harga")
+      .orderBy("ipp.tgl_pesanan", "desc");
     return res.json(results);
   } catch (error) {
     next(error);
@@ -349,60 +318,58 @@ router.get("/purchase-order/:kode_barang", async function (req, res, next) {
 });
 
 // ! COST CALCULATION PROCESS ENDPOINT
-router.get("/cost-calculation", async function (req, res, next) {
+// ✅
+router.get("/cost-process", async function (req, res, next) {
   try {
     try {
       verifyAuthorization(req);
-      let { month, year, induk } = req.query;
+      let { month, year, induk, customer } = req.query;
       if (!induk) throw new Error("ID is required");
-      const today = moment();
-      if (!month) month = today.format("M");
-      if (!year) year = today.format("YYYY");
+      if (!month || !year) throw new Error("Month or Year are required");
+      if (!customer) throw new Error("Customer is required");
+
       const query = [
-        "pesanan_customer.bulan",
-        "pesanan_customer.tahun",
-        "bom_all_level_1.induk",
-        "bom_all_level_1.jenis_barang",
-        "bom_all_level_1.kode_barang",
-        "bom_all_level_1.nama_barang",
-        "bom_all_level_1.proses",
-        "bom_all_level_1.satuan",
-        "bom_all_level_1.mesin",
-        "pesanan_customer.qty",
-        dbStokBarang.raw(
-          "IFNULL(bom_all_level_1.cycletime, bom_all_level_1.cytime_weld) AS cytime"
+        "pc.bulan",
+        "pc.tahun",
+        "bal1.induk",
+        "bal1.jenis_barang",
+        "bal1.kode_barang",
+        "bal1.proses",
+        "bal1.satuan",
+        "bal1.mesin",
+        "pc.qty",
+        dbsb.raw(
+          "IFNULL(bal1.cycletime, IFNULL(bal1.cytime_weld, 0)) AS cytime"
         ),
-        "bom_all_level_1.trf_msn",
-        "bom_all_level_1.cvt",
-        dbStokBarang.raw(
-          "IFNULL(pesanan_customer.qty * IFNULL(bom_all_level_1.cycletime, bom_all_level_1.cytime_weld) * bom_all_level_1.trf_msn / bom_all_level_1.cvt, 0) AS hrg_internal"
+        "bal1.trf_msn",
+        dbsb.raw("IFNULL(bal1.cvt, 0) AS cvt"),
+        dbsb.raw(
+          "IFNULL(pc.qty * IFNULL(bal1.cycletime, IFNULL(bal1.cytime_weld, 0)) * bal1.trf_msn / bal1.cvt, 0) AS hrg_internal"
         ),
-        "bom_all_level_1.hrg_outplan",
-        dbStokBarang.raw(
-          "IFNULL(IFNULL(pesanan_customer.qty * IFNULL(bom_all_level_1.cycletime, bom_all_level_1.cytime_weld) * bom_all_level_1.trf_msn / bom_all_level_1.cvt,0), bom_all_level_1.hrg_outplan) AS hrg_proses"
+        dbsb.raw("IFNULL(bal1.hrg_outplan, 0) AS hrg_outplan"),
+        dbsb.raw(
+          "IFNULL(IFNULL(pc.qty * IFNULL(bal1.cycletime, IFNULL(bal1.cytime_weld, 0)) * bal1.trf_msn / bal1.cvt, 0), IFNULL(bal1.hrg_outplan, 0)) AS hrg_proses"
         ),
-        "bom_all_level_1.maker",
+        "bal1.maker",
       ];
-      const results = await dbStokBarang("bom_all_level_1")
+
+      const results = await dbsb("pesanan_customer AS pc")
         .select(...query)
-        .innerJoin(
-          "pesanan_customer",
-          "bom_all_level_1.induk",
-          "pesanan_customer.induk"
-        )
+        .join("bom_all_level_1 AS bal1", "bal1.induk", "pc.induk")
+        .whereNot("pc.harga", 0)
         .where(function () {
-          this.where("bom_all_level_1.jenis_barang", "like", "%WIP%").andWhere(
-            "bom_all_level_1.proses",
+          this.where("pc.induk", induk)
+            .where("pc.bulan", month)
+            .andWhere("pc.tahun", year)
+            .andWhere("pc.customer", customer);
+        })
+        .where(function () {
+          this.where("bal1.jenis_barang", "LIKE", "%WIP%").andWhere(
+            "bal1.proses",
             "NOT LIKE",
             "%FINISH GOOD%"
           );
-        })
-        .where(function () {
-          this.where("bom_all_level_1.induk", induk)
-            .andWhere("pesanan_customer.bulan", month)
-            .andWhere("pesanan_customer.tahun", year);
         });
-
       return res.json(results);
     } catch (error) {
       next(error);
@@ -412,54 +379,50 @@ router.get("/cost-calculation", async function (req, res, next) {
   }
 });
 
-// ! COST MATERIAL ENDPOINT
+// ! COST MATERIAL ENDPOINT ✅
 router.get("/cost-material", async function (req, res, next) {
   try {
     verifyAuthorization(req);
-    const today = moment();
-    const month = Number(<string>req.query?.month) || today.format("M");
-    const year = Number(<string>req.query?.year) || today.format("YYYY");
-    const induk = <string>req.query.induk;
-    if (!induk) throw new Error("Induk is required");
+    let { month, year, induk, customer } = req.query;
+    if (!induk) throw new Error("ID is required");
+    if (!month || !year) throw new Error("Month or Year are required");
+    if (!customer) throw new Error("Customer is required");
     const query = [
-      "pesanan_customer.bulan",
-      "pesanan_customer.tahun",
-      "bom_all_level_1.induk",
-      "bom_all_level_1.jenis_barang",
-      "bom_all_level_1.kode_barang",
-      "bom_all_level_1.nama_barang",
-      "bom_all_level_1.satuan",
-      "pesanan_customer.qty",
-      "bom_all_level_1.bruto",
-      dbStokBarang.raw("1 / bom_all_level_1.bruto AS material_pcs"),
-      dbStokBarang.raw(
-        "ROUND(pesanan_customer.qty * bom_all_level_1.bruto, 2) AS total_kebutuhan"
+      "pc.bulan",
+      "pc.tahun",
+      "bal1.induk",
+      "bal1.jenis_barang",
+      "bal1.kode_barang",
+      "bal1.nama_barang",
+      "bal1.satuan",
+      "pc.qty",
+      "bal1.bruto",
+      dbsb.raw("1 / bal1.bruto AS material_pcs"),
+      dbsb.raw("ROUND(pc.qty * bal1.bruto, 2) AS total_kebutuhan"),
+      dbsb.raw("IFNULL(bal1.hrg_outplan, 0) AS harga"),
+      dbsb.raw(
+        "ROUND(IFNULL(bal1.hrg_outplan / (1 / bal1.bruto), 0), 2) AS harga_pcs"
       ),
-      "bom_all_level_1.hrg_outplan AS harga",
-      dbStokBarang.raw(
-        "ROUND(IFNULL(bom_all_level_1.hrg_outplan / (1/bom_all_level_1.bruto), 0), 0) AS harga_pcs"
+      dbsb.raw(
+        "ROUND(pc.qty * bal1.bruto, 2) * IFNULL(bal1.hrg_outplan / (1 / bal1.bruto), 0) AS total_cost_butuh"
       ),
-      dbStokBarang.raw(
-        "ROUND(pesanan_customer.qty * bom_all_level_1.bruto, 2) * IFNULL(bom_all_level_1.hrg_outplan / (1 / bom_all_level_1.bruto),0) AS total_cost_butuh"
+      dbsb.raw(
+        "ROUND(pc.qty * IFNULL(bal1.hrg_outplan / (1 / bal1.bruto), 0), 0) AS total_cost"
       ),
-      dbStokBarang.raw(
-        "ROUND(pesanan_customer.qty * IFNULL(bom_all_level_1.hrg_outplan / (1 / bom_all_level_1.bruto),0),0) AS total_cost"
-      ),
-      "bom_all_level_1.spesifikasi",
+      "bal1.spesifikasi",
     ];
-    const results = await dbStokBarang("bom_all_level_1")
+
+    const results = await dbsb("pesanan_customer AS pc")
       .select(...query)
-      .innerJoin(
-        "pesanan_customer",
-        "bom_all_level_1.induk",
-        "pesanan_customer.induk"
-      )
-      .where("bom_all_level_1.jenis_barang", "LIKE", "%Raw Material%")
+      .join("bom_all_level_1 AS bal1", "bal1.induk", "pc.induk")
+      .whereNot("pc.harga", 0)
       .where(function () {
-        this.where("bom_all_level_1.induk", induk)
-          .andWhere("pesanan_customer.bulan", month)
-          .andWhere("pesanan_customer.tahun", year);
-      });
+        this.where("pc.induk", induk)
+          .andWhere("pc.customer", customer)
+          .andWhere("pc.bulan", month)
+          .andWhere("pc.tahun", year);
+      })
+      .where("bal1.jenis_barang", "LIKE", "%Raw Material%");
     return res.json(results);
   } catch (error) {
     next(error);
@@ -485,7 +448,7 @@ router.get("/logs", async function (req, res, next) {
     if (!end) end = moment().endOf("day").utc(true).format();
     else end = moment(end).endOf("day").utc(true).format();
 
-    const data = await dbStokBarang("marketing_users_log AS mul")
+    const data = await dbsb("marketing_users_log AS mul")
       .select("*")
       .where(function () {
         this.whereBetween("created_at", [start, end]);
@@ -505,11 +468,8 @@ router.get("/logs/count", async function (req, res, next) {
     verifyAuthorization(req);
     const username = (req.query.username as string) || "";
 
-    const query = [
-      dbStokBarang.raw("COUNT(mul.username) AS total"),
-      "mul.username",
-    ];
-    const result = await dbStokBarang("marketing_users_log AS mul")
+    const query = [dbsb.raw("COUNT(mul.username) AS total"), "mul.username"];
+    const result = await dbsb("marketing_users_log AS mul")
       .select(...query)
       .where(function () {
         if (username) this.where("mul.username", username);
@@ -538,7 +498,7 @@ router.get("/logs/:username", async function (req, res, next) {
     if (!end) end = moment().endOf("day").utc(true).format();
     else end = moment(end).endOf("day").utc(true).format();
 
-    const data = await dbStokBarang("marketing_users_log AS mul")
+    const data = await dbsb("marketing_users_log AS mul")
       .select("*")
       .where("mul.username", username)
       .where(function () {
@@ -561,12 +521,12 @@ router.post("/logs", async function (req, res, next) {
       ip_address: string;
     };
     if (!body.log) throw new Error("Log cannot be empty");
-    const isUserValid = await dbStokBarang("marketing_users AS mu")
+    const isUserValid = await dbsb("marketing_users AS mu")
       .select("*")
       .where("mu.username", body.username)
       .first();
     if (!isUserValid) body.username = null;
-    const data = await dbStokBarang("marketing_users_log").insert({
+    const data = await dbsb("marketing_users_log").insert({
       ...body,
       log: body.log.toLowerCase(),
     });
@@ -584,9 +544,7 @@ router.delete("/logs/:log_id", async function (req, res, next) {
     const logId = req.params.log_id;
     const id: number = Number(logId);
     if (!id) throw new Error("Invalid Log ID");
-    const data = await dbStokBarang("marketing_users_log")
-      .where("id", id)
-      .delete();
+    const data = await dbsb("marketing_users_log").where("id", id).delete();
     return res.json(data);
   } catch (error) {
     next(error);
