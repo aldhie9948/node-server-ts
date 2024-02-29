@@ -348,7 +348,7 @@ router.get("/cost-process", async function (req, res, next) {
         ),
         dbsb.raw("IFNULL(bal1.hrg_outplan, 0) AS hrg_outplan"),
         dbsb.raw(
-          "IFNULL(IFNULL(pc.qty * IFNULL(bal1.cycletime, IFNULL(bal1.cytime_weld, 0)) * bal1.trf_msn / bal1.cvt, 0), IFNULL(bal1.hrg_outplan, 0)) AS hrg_proses"
+          "IFNULL(pc.qty * IFNULL(bal1.cycletime, bal1.cytime_weld) * bal1.trf_msn / bal1.cvt, (pc.qty * bal1.hrg_outplan)) AS hrg_proses"
         ),
         "bal1.maker",
       ];
