@@ -27,7 +27,9 @@ app.use("/api/kepatuhan-karyawan", kepatuhanKaryawan);
 app.use("/api/marketing", marketingApp);
 app.use("/api/monitor-gudang/v2", monitorGudangV2);
 app.use(errorHandler);
-app.use("*", (req, res) => res.status(404).json({ error: "Unknown endpoint" }));
+app.use("*", (_req, res) =>
+  res.status(404).json({ error: "Unknown endpoint" })
+);
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
   console.log("server is running on *:" + PORT);
