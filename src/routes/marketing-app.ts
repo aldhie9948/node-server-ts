@@ -277,12 +277,13 @@ router.delete("/users/delete/:nik", async function (req, res, next) {
 router.get("/purchase-order", async function (req, res, next) {
   try {
     verifyAuthorization(req);
-    const { induk, month, year, customer } = req.query;
-    Object.entries({ induk, month, year, customer }).forEach(([key, value]) => {
-      if (!value) throw new Error(key.concat(" is required"));
-    });
+    const { induk, month, year, customer, qty } = req.query;
+    Object.entries({ induk, month, year, customer, qty }).forEach(
+      ([key, value]) => {
+        if (!value) throw new Error(key.concat(" is required"));
+      }
+    );
     const query = [
-      "ipp.id",
       dbsb.raw("MONTH(ipp.tgl_pesanan) AS bulan"),
       dbsb.raw("YEAR(ipp.tgl_pesanan) AS tahun"),
       "ipp.tgl_pesanan",
@@ -304,6 +305,7 @@ router.get("/purchase-order", async function (req, res, next) {
           .andWhereRaw("MONTH(ipp.tgl_pesanan) = ?", month)
           .andWhereRaw("YEAR(ipp.tgl_pesanan) = ?", year);
       })
+      .having(dbsb.raw("SUM(ipp.qty) = ?", [qty]))
       .groupByRaw("MONTH(ipp.tgl_pesanan)")
       .groupByRaw("YEAR(ipp.tgl_pesanan)")
       .groupBy("ipp.customer")
@@ -323,11 +325,12 @@ router.get("/cost-process", async function (req, res, next) {
   try {
     try {
       verifyAuthorization(req);
-      let { month, year, induk, customer } = req.query;
-      if (!induk) throw new Error("ID is required");
-      if (!month || !year) throw new Error("Month or Year are required");
-      if (!customer) throw new Error("Customer is required");
-
+      let { month, year, induk, customer, qty } = req.query;
+      Object.entries({ month, year, induk, customer, qty }).forEach(
+        ([key, value]) => {
+          if (!value) throw new Error(key.concat(" is required"));
+        }
+      );
       const query = [
         "pc.bulan",
         "pc.tahun",
@@ -369,7 +372,9 @@ router.get("/cost-process", async function (req, res, next) {
             "NOT LIKE",
             "%FINISH GOOD%"
           );
-        });
+        })
+        .having(dbsb.raw("pc.qty = ?", [qty]));
+
       return res.json(results);
     } catch (error) {
       next(error);
@@ -383,10 +388,12 @@ router.get("/cost-process", async function (req, res, next) {
 router.get("/cost-material", async function (req, res, next) {
   try {
     verifyAuthorization(req);
-    let { month, year, induk, customer } = req.query;
-    if (!induk) throw new Error("ID is required");
-    if (!month || !year) throw new Error("Month or Year are required");
-    if (!customer) throw new Error("Customer is required");
+    let { month, year, induk, customer, qty } = req.query;
+    Object.entries({ month, year, induk, customer, qty }).forEach(
+      ([key, value]) => {
+        if (!value) throw new Error(key.concat(" is required"));
+      }
+    );
     const query = [
       "pc.bulan",
       "pc.tahun",
@@ -422,7 +429,8 @@ router.get("/cost-material", async function (req, res, next) {
           .andWhere("pc.bulan", month)
           .andWhere("pc.tahun", year);
       })
-      .where("bal1.jenis_barang", "LIKE", "%Raw Material%");
+      .where("bal1.jenis_barang", "LIKE", "%Raw Material%")
+      .having(dbsb.raw("pc.qty = ?", [qty]));
     return res.json(results);
   } catch (error) {
     next(error);
