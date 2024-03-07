@@ -12,6 +12,7 @@ import monitorGudangV2 from "./routes/monitor-gudang-v2";
 import moment from "moment";
 import cors from "cors";
 import logger from "./lib/logger";
+import pesananProduk from "./routes/pesanan-produk";
 moment.locale("id");
 
 const app: Application = express();
@@ -26,6 +27,7 @@ app.use("/api/monitoring", monitoring);
 app.use("/api/kepatuhan-karyawan", kepatuhanKaryawan);
 app.use("/api/marketing", marketingApp);
 app.use("/api/monitor-gudang/v2", monitorGudangV2);
+app.use("/api/pesanan-produk", pesananProduk);
 app.use(errorHandler);
 app.use("*", (_req, res) =>
   res.status(404).json({ error: "Unknown endpoint" })

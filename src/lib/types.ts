@@ -19,3 +19,14 @@ export interface ILoginForm {
   username: string;
   password: string;
 }
+
+export interface IPesananProdukForm {
+  tgl_pesanan: string;
+  no_pesanan: string;
+  customer: string;
+  kode_barang: string;
+  nama_barang: string;
+  qty: number;
+  satuan: string;
+  harga: number;
+}
