@@ -80,12 +80,13 @@ router.get("/press/worker/:keyword", async function (req, res, next) {
       .select(...query)
       .leftOuterJoin("ppc_tonase AS pt", "pt.id", "kko.id_mesin")
       .where(function () {
+        const [year, month] = keyword.split("-");
         this.where("kko.nik", "like", keyword)
           .orWhere("kko.karyawan", "like", keyword)
-          .orWhereRaw(
-            "YEAR(kko.tgl) = ? AND MONTH(kko.tgl) = ?",
-            keyword.split("-")
-          );
+          .orWhereRaw("YEAR(kko.tgl) = ? AND MONTH(kko.tgl) = ?", [
+            year || "",
+            month || "",
+          ]);
       })
       .where(function () {
         this.whereNot("kko.nik", "").whereNot("kko.karyawan", "");
@@ -172,12 +173,13 @@ router.get("/welding/worker/:keyword", async function (req, res, next) {
       .select(...query)
       .leftOuterJoin("ppc_tonase AS ppt", "ppt.id", "kkow.id_mesin")
       .where(function () {
+        const [year, month] = keyword;
         this.where("kkow.nik", "like", keyword)
           .orWhere("kkow.karyawan", "like", keyword)
-          .orWhereRaw(
-            "YEAR(kkow.tgl) = ? AND MONTH(kkow.tgl) = ?",
-            keyword.split("-")
-          );
+          .orWhereRaw("YEAR(kkow.tgl) = ? AND MONTH(kkow.tgl) = ?", [
+            year || "",
+            month || "",
+          ]);
       })
       .where(function () {
         this.whereNot("kkow.nik", "").whereNot("kkow.karyawan", "");
