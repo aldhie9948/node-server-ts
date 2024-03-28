@@ -1,6 +1,6 @@
-import { Router, Request } from "express";
-import initKnex from "../lib/knex-config";
+import { Request, Router } from "express";
 import moment from "moment";
+import initKnex from "../lib/knex-config";
 
 const router = Router();
 const stok_barang_knex = initKnex("stok_barang");
@@ -112,6 +112,31 @@ router.get("/material/transactions/latest", async function (req, res, next) {
       .orderBy("hsb.tgl", "desc")
       .limit(Number(limit) || 5);
     return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/material/transactions/new", async function (req, res, next) {
+  try {
+    const { id, start, end, plant } = req.query;
+    const results = await stok_barang_knex("transaksi_gudang AS tg")
+      .select("*")
+      .where(function () {
+        this.where("tg.kode_barang", id).andWhere("tg.plant", plant);
+      })
+      .where(function () {
+        const s = moment(<string>start)
+          .utc(true)
+          .toISOString();
+        const e = moment(<string>end)
+          .add(1, "d")
+          .utc(true)
+          .toISOString();
+        this.whereBetween("tg.tgl", [s, e]);
+      });
+
+    return res.json(results);
   } catch (error) {
     next(error);
   }
